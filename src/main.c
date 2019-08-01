@@ -1,9 +1,12 @@
-#include "stm32f1xx_hal.h"
+
+
+#include "rosserial_stm32/ros.h"
+// #include "stm32f1xx_hal.h"
 #include "constants.h"
 #include "config.h"
 #include "power.h"
 #include "debug.h"
-#include "uart.h"
+// #include "uart.h"
 #include "adc.h"
 #include "motor.h"
 
@@ -29,13 +32,14 @@ extern struct ADC adc_L;
 extern struct ADC adc_R;
 #endif
 
+ros::NodeHandle nh;
 
 /* MAIN
  * Setup the clock and watchdog, and initialize all the peripherals.
  * Check the RX data, TX data, and power statuses at different intervals.
  */
 int main(void)
-{
+{	
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 	HAL_Init();
 	/* Configure the system clock */
@@ -53,10 +57,16 @@ int main(void)
 	led_init();
 	led_set(1);
 
-	MX_USART2_UART_Init();
+	// MX_USART2_UART_Init();
 	adcs_setup_and_init();
 	motors_setup_and_init();
-
+	
+   // init rosserial
+	nh.initNode();
+  	
+	
+	// HERE
+	
 #ifdef CALIBRATION
 
 	while (1) {
