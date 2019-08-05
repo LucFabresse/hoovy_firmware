@@ -48,7 +48,7 @@ C_SOURCES =  \
 ./drivers/stm32f1xx_hal_driver/src/stm32f1xx_hal_iwdg.c \
 ./src/adc.c \
 ./src/motor.c \
-# ./src/uart.c 
+./src/uart.c \
 ./src/power.c \
 ./src/debug.c \
 ./src/delay.c \
