@@ -15,6 +15,7 @@ extern "C" {
 
 #include "rosserial_stm32/ros.h"
 #include "std_msgs/String.h"
+#include "std_msgs/UInt32.h"
 
 extern volatile struct UART uart;
 
@@ -38,6 +39,23 @@ extern struct ADC adc_L;
 extern struct ADC adc_R;
 #endif
 
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//  Buzzer Topic
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+void buzzer_bip_count(uint32_t bipCount) {
+	for (int i = 0; i < bipCount; i++) {
+		buzzer_one_beep();
+		delay_ms(200);
+	}
+}
+ 
+void buzzerCb( const std_msgs::UInt32& beepDelay){
+	buzzer_bip_count(beepDelay.data);
+}
+ 
+  
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 /* MAIN
@@ -86,15 +104,17 @@ int main(void)
 	str_msg.data = "Hello from Hoverboard\n\r";
 	ros::Publisher chatter("chatter", &str_msg);
 	
+	ros::Subscriber<std_msgs::UInt32> sub("buzzer", &buzzerCb );
+	
 	nh.initNode();
 	nh.advertise(chatter);
-
+	nh.subscribe(sub);
+	
 	buzzer_one_beep();
 
 	while (1) {
 					
-		chatter.publish(&str_msg);
-		
+		chatter.publish(&str_msg);	
 		//nh.loginfo("Test info");
 		nh.spinOnce();
 		delay_ms(10); // => rostopic hz /chatter => ~90hz
