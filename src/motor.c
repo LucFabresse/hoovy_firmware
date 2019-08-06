@@ -410,6 +410,15 @@ static void motor_speed(struct Motor *motor, int16_t rpm) {
 
 }
 
+void motor_speed_right(int16_t rpm) {
+	motor_speed(&motor_R, rpm);
+}
+
+void motor_speed_left(int16_t rpm) {
+	motor_speed(&motor_L, rpm);
+}
+
+
 /* Calibrate a wheel by slowly increasing the pwm duty cycle until it moves just enough.
  */
 static void motor_calibrate(struct Motor *motor, int8_t calibration_dir, uint8_t power) {

@@ -15,11 +15,17 @@ extern "C" {
 
 #include "rosserial_stm32/ros.h"
 #include "std_msgs/String.h"
-#include "std_msgs/UInt32.h"
+#include "std_msgs/UInt16.h"
+#include "std_msgs/Int16.h"
 
-extern volatile struct UART uart;
 
 // ----------------------PRIVATE----------------------
+
+extern volatile struct UART uart;
+ros::NodeHandle nh;
+uint32_t last_rx_time = 0; // useful for hearbeat in motor.c
+
+
 static void SystemClock_Config(void);
 static void MX_IWDG_Init(void);
 static void receive_data();
@@ -29,9 +35,8 @@ static void check_power();
 // ----------------------PUBLIC----------------------
 void error_handler(void);
 
-uint32_t time, last_tx_time, last_rx_time, last_pwr_time;
+uint32_t last_pwr_time;
 volatile int8_t status;
-int16_t speeds[2];
 IWDG_HandleTypeDef hiwdg;
 
 #ifdef DEBUG
@@ -44,18 +49,37 @@ extern struct ADC adc_R;
 //  Buzzer Topic
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-void buzzer_bip_count(uint32_t bipCount) {
+void buzzer_bip_count(uint16_t bipCount) {
 	for (int i = 0; i < bipCount; i++) {
 		buzzer_one_beep();
 		delay_ms(200);
 	}
 }
  
-void buzzerCb( const std_msgs::UInt32& beepDelay){
+void buzzerCb(const std_msgs::UInt16& beepDelay){
 	buzzer_bip_count(beepDelay.data);
 }
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Motors Topic
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+char log_msg[128];
+
+void MotorLeftCb(const std_msgs::Int16& rpm) {
+	motor_speed_left(rpm.data);
+	sprintf(log_msg, "motor left data received %d", rpm);
+	nh.loginfo(log_msg);
+}
+
+void MotorRightCb (const std_msgs::Int16& rpm) {
+	// nh.loginfo("motor right data received");
+	motor_speed_right(rpm.data);	
+	sprintf(log_msg, "motor right data received %d", rpm);
+	nh.loginfo(log_msg);
+}
+
  
-  
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 /* MAIN
@@ -85,83 +109,83 @@ int main(void)
 	adcs_setup_and_init();
 	motors_setup_and_init();
 
-#ifdef CALIBRATION
+// #ifdef CALIBRATION
+// 	while (1) {
+// 		motors_calibrate();
+// 	}
+// #else
 
-	while (1) {
-		motors_calibrate();
-	}
-#else
+	nh.initNode();
 
-	last_rx_time = HAL_GetTick();
-	last_tx_time = HAL_GetTick();
-	last_pwr_time = HAL_GetTick();
-
-	// int shouldWrite = 0;
-	// int readChar = -1;
-	
-	ros::NodeHandle nh;
+	// @TODO publish /battery_level
 	std_msgs::String str_msg;
 	str_msg.data = "Hello from Hoverboard\n\r";
 	ros::Publisher chatter("chatter", &str_msg);
-	
-	ros::Subscriber<std_msgs::UInt32> sub("buzzer", &buzzerCb );
-	
-	nh.initNode();
 	nh.advertise(chatter);
-	nh.subscribe(sub);
 	
-	buzzer_one_beep();
-
+	// subscribe /buzzer
+	ros::Subscriber<std_msgs::UInt16> subBuzzerTopic("buzzer", &buzzerCb );
+	nh.subscribe(subBuzzerTopic);
+	
+	// subscribe to motors topics
+	 ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left", &MotorLeftCb );
+	 nh.subscribe(subMotorLeftTopic);
+	 //delay_ms(50);
+	 ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right", &MotorRightCb );
+	 nh.subscribe(subMotorRightTopic);
+	
+	nh.loginfo("[OK] Hoverboard started\n");
+	buzzer_one_beep();	
 	while (1) {
-					
-		chatter.publish(&str_msg);	
-		//nh.loginfo("Test info");
+		// last_rx_time = HAL_GetTick();
+		chatter.publish(&str_msg);
+		
 		nh.spinOnce();
-		delay_ms(10); // => rostopic hz /chatter => ~90hz
+		delay_ms(100); // => rostopic hz /chatter => ~90hz
 		HAL_IWDG_Refresh(&hiwdg);   //819mS // Luc: what is this delay?
 	}
 
-#endif
+// #endif
 
 }
 
 
 // ----------------------PRIVATE----------------------
-/* RECEIVE DATA
- * Process the newly received data. If a proper frame was processed, update the last_rx_time.
- * Update the motors to the new speeds.
- */
-static void receive_data() {
-	int uart_rx_status = Uart_RX_process();
-	if (uart_rx_status == 1) {
-		last_rx_time = HAL_GetTick();
-		motors_speeds(speeds[0], speeds[1]);
-	}
-}
+// /* RECEIVE DATA
+//  * Process the newly received data. If a proper frame was processed, update the last_rx_time.
+//  * Update the motors to the new speeds.
+//  */
+// static void receive_data() {
+// 	int uart_rx_status = Uart_RX_process();
+// 	if (uart_rx_status == 1) {
+// 		last_rx_time = HAL_GetTick();
+// 		motors_speeds(speeds[0], speeds[1]);
+// 	}
+// }
 
-/* TRANSMIT DATA
- * Send the status byte, as well as the battery voltage if the TX line is free.
- * In DEBUG mode, additional readings are outputted - current readings from the wheel.
- */
-static void transmit_data() {
-	float data_v;
-	data_v = get_battery_volt();
-
-#if defined(DEBUG) && !defined(DEBUG_NO_ADC)
-	//TODO: These readings are not in amps, needs work.
-	float data_i_L, data_i_R;
-	data_i_L = get_motor_current(&adc_L);
-	data_i_R = get_motor_current(&adc_R);
-	sprintf((char *)&uart.TX_buffer[0],"[%d, %d, %d, %d]\n", status, (int)data_v, (int)data_i_L, (int)data_i_R);
-#else
-	sprintf((char *)&uart.TX_buffer[0],"[%d, %d]\n", status, (int)data_v);
-#endif
-
-	if (Uart_is_TX_free()) {
-		Uart_TX((char *)&uart.TX_buffer[0]);
-		last_tx_time = HAL_GetTick();
-	}
-}
+// /* TRANSMIT DATA
+//  * Send the status byte, as well as the battery voltage if the TX line is free.
+//  * In DEBUG mode, additional readings are outputted - current readings from the wheel.
+//  */
+// static void transmit_data() {
+// 	float data_v;
+// 	data_v = get_battery_volt();
+//
+// #if defined(DEBUG) && !defined(DEBUG_NO_ADC)
+// 	//TODO: These readings are not in amps, needs work.
+// 	float data_i_L, data_i_R;
+// 	data_i_L = get_motor_current(&adc_L);
+// 	data_i_R = get_motor_current(&adc_R);
+// 	sprintf((char *)&uart.TX_buffer[0],"[%d, %d, %d, %d]\n", status, (int)data_v, (int)data_i_L, (int)data_i_R);
+// #else
+// 	sprintf((char *)&uart.TX_buffer[0],"[%d, %d]\n", status, (int)data_v);
+// #endif
+//
+// 	if (Uart_is_TX_free()) {
+// 		Uart_TX((char *)&uart.TX_buffer[0]);
+// 		last_tx_time = HAL_GetTick();
+// 	}
+// }
 
 /* Check two power related things:
  * - the battery level is too low (limit set at 32V)
@@ -278,7 +302,8 @@ void error_handler(void)
 	/* USER CODE BEGIN error_handler */
 	/* User can add his own implementation to report the HAL error return state */
 	motors_stop();
-
+	nh.logerror("[ERROR] Hoverboard critical\n");
+	
 	while(1)
 	{
 	}
