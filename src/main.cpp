@@ -65,7 +65,10 @@ int rosserial_read(){
 	return rx_value;
 }
 
-uint8_t tbuf[256];
+
+// Black magic cast DO NOT TOUCH!!!
+#define tbuf  ((uint8_t *)&uart.TX_buffer[0])
+
 uint32_t twind=0, tfind=0;
 
 void rosserial_flush(void){
@@ -73,7 +76,7 @@ void rosserial_flush(void){
     uart.TX_free = 0;    //busy
     if(twind != tfind){
       uint16_t len = tfind < twind ? twind - tfind : BUFFER_LENGTH_TX - tfind;
-      HAL_UART_Transmit_DMA(huart, &(tbuf[tfind]), len);
+      HAL_UART_Transmit_DMA(huart,&(tbuf[tfind]), len);
       tfind = (tfind + len) & (BUFFER_LENGTH_TX - 1);
     }
     last_tx_time = HAL_GetTick();
@@ -85,7 +88,7 @@ void rosserial_write(uint8_t* data, int length){
   n = n <= BUFFER_LENGTH_TX ? n : BUFFER_LENGTH_TX;
 
   int n_tail = n <= BUFFER_LENGTH_TX - twind ? n : BUFFER_LENGTH_TX - twind;
-  memcpy(&(tbuf[twind]), data, n_tail);
+  memcpy(&tbuf[twind], data, n_tail);
   twind = (twind + n) & (BUFFER_LENGTH_TX - 1);
 
   if(n != n_tail){
