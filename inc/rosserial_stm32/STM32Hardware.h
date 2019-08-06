@@ -35,23 +35,35 @@
 #ifndef ROS_STM32_HARDWARE_H_
 #define ROS_STM32_HARDWARE_H_
 
+// Black magic cast DO NOT TOUCH!!!
+#define tbuf  ((uint8_t *)&uart.TX_buffer[0])
+
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_hal_uart.h"
 #include "stm32f1xx_hal_tim.h"
 
 extern UART_HandleTypeDef huart2;
+extern DMA_HandleTypeDef hdma_usart2_rx;
+extern volatile struct UART uart;
+
+extern "C" {
+	#include "uart.h"
+	#include "delay.h"
+	#include <string.h>
+}
 
 class STM32Hardware {
   protected:
     UART_HandleTypeDef *huart;
+    //
+    // const static uint16_t rbuflen = 128;
+    // uint8_t rbuf[rbuflen];
 
-    const static uint16_t rbuflen = 128;
-    uint8_t rbuf[rbuflen];
     uint32_t rind;
-    inline uint32_t getRdmaInd(void){ return (rbuflen - huart->hdmarx->Instance->CNDTR) & (rbuflen - 1); }
+    // inline uint32_t getRdmaInd(void){ return (rbuflen - huart->hdmarx->Instance->CNDTR) & (rbuflen - 1); }
 
-    const static uint16_t tbuflen = 256;
-    uint8_t tbuf[tbuflen];
+    // const static uint16_t tbuflen = 256;
+	 //uint8_t tbuf[tbuflen];
     uint32_t twind, tfind;
 
   public:
@@ -63,52 +75,58 @@ class STM32Hardware {
      huart(huart_), rind(0), twind(0), tfind(0){
     }
   
+  	 // Ros::NodeHandle callback
     void init(){
-      reset_rbuf();
+      // reset_rbuf();
     }
 
-    void reset_rbuf(void){
-      HAL_UART_Receive_DMA(huart, rbuf, rbuflen);
-    }
+	 
+	 int read(){
+	 	int rx_value = -1;
+	 	int dma_count = -1;
+	
+	 	if (uart.RX_available) {
+	 		// __HAL_DMA_GET_COUNTER(__HANDLE__) Returns the number of remaining data units in the current DMAy Streamx transfer
+	 		dma_count =  BUFFER_LENGTH_RX - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
+					
+	 		if( rind != dma_count){
+	 		    rx_value = uart.RX_buffer[rind++];
+	 		    rind &= BUFFER_LENGTH_RX - 1;
+	 		}
+	 		
+	 	}
+	 	return rx_value;
+	 }
 
-    int read(){
-      int c = -1;
-      if(rind != getRdmaInd()){
-        c = rbuf[rind++];
-        rind &= rbuflen - 1;
-      }
-      return c;
-    }
 
-    void flush(void){
-      static bool mutex = false;
+	 void flush(void){
+	   if (Uart_is_TX_free()) {
+	     uart.TX_free = 0;    //busy
+	     if(twind != tfind){
+	       uint16_t len = tfind < twind ? twind - tfind : BUFFER_LENGTH_TX - tfind;
+	       HAL_UART_Transmit_DMA(huart,&(tbuf[tfind]), len);
+	       tfind = (tfind + len) & (BUFFER_LENGTH_TX - 1);
+			 // delay_ms(10);
+	     }
+	     
+	   }
+	 }
 
-      if((huart->gState == HAL_UART_STATE_READY) && !mutex){
-        mutex = true;
 
-        if(twind != tfind){
-          uint16_t len = tfind < twind ? twind - tfind : tbuflen - tfind;
-          HAL_UART_Transmit_DMA(huart, &(tbuf[tfind]), len);
-          tfind = (tfind + len) & (tbuflen - 1);
-        }
-        mutex = false;
-      }
-    }
+	 void write(uint8_t* data, int length){
+	   int n = length;
+	   n = n <= BUFFER_LENGTH_TX ? n : BUFFER_LENGTH_TX;
 
-    void write(uint8_t* data, int length){
-      int n = length;
-      n = n <= tbuflen ? n : tbuflen;
+	   int n_tail = n <= BUFFER_LENGTH_TX - twind ? n : BUFFER_LENGTH_TX - twind;
+	   memcpy(&tbuf[twind], data, n_tail);
+	   twind = (twind + n) & (BUFFER_LENGTH_TX - 1);
 
-      int n_tail = n <= tbuflen - twind ? n : tbuflen - twind;
-      memcpy(&(tbuf[twind]), data, n_tail);
-      twind = (twind + n) & (tbuflen - 1);
+	   if(n != n_tail){
+	     memcpy(tbuf, &(data[n_tail]), n - n_tail);
+	   }
 
-      if(n != n_tail){
-        memcpy(tbuf, &(data[n_tail]), n - n_tail);
-      }
-
-      flush();
-    }
+	   flush();
+	 }
 
     unsigned long time(){ return HAL_GetTick(); }
 

@@ -1,11 +1,20 @@
-#include "stm32f1xx_hal.h"
-#include "constants.h"
-#include "config.h"
-#include "power.h"
-#include "debug.h"
-#include "uart.h"
-#include "adc.h"
-#include "motor.h"
+extern "C" {
+	#include "stm32f1xx_hal.h"
+	#include "constants.h"
+	#include "config.h"
+	#include "power.h"
+	#include "delay.h"
+	#include "debug.h"
+	#include "uart.h"
+	#include "adc.h"
+	#include "motor.h"
+
+	int _kill(pid_t pid, int sig) {}
+	pid_t _getpid(void) {}
+}
+
+#include "rosserial_stm32/ros.h"
+#include "std_msgs/String.h"
 
 extern volatile struct UART uart;
 
@@ -29,87 +38,7 @@ extern struct ADC adc_L;
 extern struct ADC adc_R;
 #endif
 
-
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// ROS SERIAL
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-#include "string.h"
-
-extern "C" {
-	int _kill(pid_t pid, int sig) {}
-	pid_t _getpid(void) {}
-}
-
-extern DMA_HandleTypeDef hdma_usart2_rx;
-extern volatile struct UART uart;
-
-extern UART_HandleTypeDef huart2;
-UART_HandleTypeDef *huart = &huart2;
-uint32_t rind=0;
-
-int rosserial_read(){
-	int rx_value = -1;
-	int dma_count = -1;
-	
-	if (uart.RX_available) {
-		// __HAL_DMA_GET_COUNTER(__HANDLE__) Returns the number of remaining data units in the current DMAy Streamx transfer.
-		dma_count =  BUFFER_LENGTH_RX - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
-					
-		if( rind != dma_count){
-		    rx_value = uart.RX_buffer[rind++];
-		    rind &= BUFFER_LENGTH_RX - 1;
-		}
-		last_rx_time = HAL_GetTick();
-	}
-	return rx_value;
-}
-
-
-// Black magic cast DO NOT TOUCH!!!
-#define tbuf  ((uint8_t *)&uart.TX_buffer[0])
-
-uint32_t twind=0, tfind=0;
-
-void rosserial_flush(void){
-  if (Uart_is_TX_free()) {
-    uart.TX_free = 0;    //busy
-    if(twind != tfind){
-      uint16_t len = tfind < twind ? twind - tfind : BUFFER_LENGTH_TX - tfind;
-      HAL_UART_Transmit_DMA(huart,&(tbuf[tfind]), len);
-      tfind = (tfind + len) & (BUFFER_LENGTH_TX - 1);
-    }
-    last_tx_time = HAL_GetTick();
-  }
-}
-
-void rosserial_write(uint8_t* data, int length){
-  int n = length;
-  n = n <= BUFFER_LENGTH_TX ? n : BUFFER_LENGTH_TX;
-
-  int n_tail = n <= BUFFER_LENGTH_TX - twind ? n : BUFFER_LENGTH_TX - twind;
-  memcpy(&tbuf[twind], data, n_tail);
-  twind = (twind + n) & (BUFFER_LENGTH_TX - 1);
-
-  if(n != n_tail){
-    memcpy(tbuf, &(data[n_tail]), n - n_tail);
-  }
-
-  rosserial_flush();
-}
-
-
-void rosserial_write_int(int i){
-	char buf[10];
-	bzero(buf,10);
-	sprintf(buf,"%d\n\r",i);
-	rosserial_write((uint8_t*)buf,strlen(buf));
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-
 
 /* MAIN
  * Setup the clock and watchdog, and initialize all the peripherals.
@@ -149,22 +78,27 @@ int main(void)
 	last_tx_time = HAL_GetTick();
 	last_pwr_time = HAL_GetTick();
 
-	int shouldWrite = 0;
-	int readChar = -1;
-
+	// int shouldWrite = 0;
+	// int readChar = -1;
 	
-	while (1) {
-		time = HAL_GetTick();
-					
-		if( !shouldWrite ) {
-			readChar=rosserial_read();
-			shouldWrite = (readChar != -1);
-		} else {		
-			rosserial_write((uint8_t*)&readChar, 1);
-			shouldWrite = !shouldWrite;
-		}				
+	ros::NodeHandle nh;
+	std_msgs::String str_msg;
+	str_msg.data = "Hello from Hoverboard\n\r";
+	ros::Publisher chatter("chatter", &str_msg);
+	
+	nh.initNode();
+	nh.advertise(chatter);
 
-		HAL_IWDG_Refresh(&hiwdg);   //819mS
+	buzzer_one_beep();
+
+	while (1) {
+					
+		chatter.publish(&str_msg);
+		
+		//nh.loginfo("Test info");
+		nh.spinOnce();
+		delay_ms(10); // => rostopic hz /chatter => ~90hz
+		HAL_IWDG_Refresh(&hiwdg);   //819mS // Luc: what is this delay?
 	}
 
 #endif
