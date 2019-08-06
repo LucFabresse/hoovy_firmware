@@ -3,7 +3,6 @@
 ######################################
 TARGET = hoverboard
 
-
 ######################################
 # building variables
 ######################################
@@ -47,13 +46,16 @@ C_SOURCES =  \
 ./drivers/stm32f1xx_hal_driver/src/stm32f1xx_hal_flash.c \
 ./drivers/stm32f1xx_hal_driver/src/stm32f1xx_hal_iwdg.c \
 ./src/adc.c \
-./src/motor.c \
-./src/uart.c \
 ./src/power.c \
+./src/motor.c \
 ./src/debug.c \
 ./src/delay.c \
-./src/main.c \
-./src/stm32f1xx_hal_msp.c  
+./src/stm32f1xx_hal_msp.c \
+./src/uart.c 
+
+CPP_SOURCES = ./src/time.cpp \
+./src/duration.cpp \
+./src/main.cpp 
 
 # ASM sources
 ASM_SOURCES =  \
@@ -69,13 +71,14 @@ PERIFLIB_SOURCES =
 #######################################
 # binaries
 #######################################
-BINPATH = /usr/local/bin
+BINPATH = # /
 PREFIX = arm-none-eabi-
-CC = $(BINPATH)/$(PREFIX)gcc
-AS = $(BINPATH)/$(PREFIX)gcc -x assembler-with-cpp
-CP = $(BINPATH)/$(PREFIX)objcopy
-AR = $(BINPATH)/$(PREFIX)ar
-SZ = $(BINPATH)/$(PREFIX)size
+CXX = $(BINPATH)$(PREFIX)g++
+CC = $(BINPATH)$(PREFIX)gcc
+AS = $(BINPATH)$(PREFIX)gcc -x assembler-with-cpp
+CP = $(BINPATH)$(PREFIX)objcopy
+AR = $(BINPATH)$(PREFIX)ar
+SZ = $(BINPATH)$(PREFIX)size
 HEX = $(CP) -O ihex
 BIN = $(CP) -O binary -S
 
@@ -116,7 +119,6 @@ C_DEFS =  \
 -DUSE_HAL_DRIVER \
 -DSTM32F103xE
 
-
 # AS includes
 AS_INCLUDES = 
 
@@ -126,8 +128,8 @@ C_INCLUDES =  \
 -I./drivers/stm32f1xx_hal_driver/inc \
 -I./drivers/stm32f1xx_hal_driver/inc/legacy \
 -I./drivers/cmsis/device/st/stm32f1xx/inc \
--I./drivers/cmsis/inc
-
+-I./drivers/cmsis/inc \
+-I./inc/rosserial_stm32
 
 # compile gcc flags
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
@@ -142,6 +144,7 @@ endif
 # Generate dependency information
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)"
 
+CXXFLAGS = $(CFLAGS)
 
 #######################################
 # LDFLAGS
@@ -150,9 +153,10 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)"
 LDSCRIPT = stm32f103rctx_flash.ld
 
 # libraries
-LIBS = -lc -lm -lnosys
+LIBS =  -lc -lstdc++ -lm -lnosys
 LIBDIR =
 LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections
+# -no-wchar-size-warning
 
 # default action: build all
 all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET).bin
@@ -164,12 +168,19 @@ all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET
 # list of objects
 OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
+
+OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(CPP_SOURCES:.cpp=.o)))
+vpath %.cpp $(sort $(dir $(CPP_SOURCES)))
+
 # list of ASM program objects
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
 vpath %.s $(sort $(dir $(ASM_SOURCES)))
 
 $(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR) 
 	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
+
+$(BUILD_DIR)/%.o: %.cpp Makefile | $(BUILD_DIR) 
+	$(CXX) -c $(CXXFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.cpp=.lst)) $< -o $@
 
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
 	$(AS) -c $(CFLAGS) $< -o $@
@@ -187,11 +198,6 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 $(BUILD_DIR):
 	mkdir $@		
 
-redo: all upload
-
-serial: 
-	 picocom -b 115200 /dev/cu.wchusbserial401330
-
 #######################################
 # clean up
 #######################################
@@ -201,7 +207,7 @@ clean:
 #######################################
 # upload
 #######################################
-upload:
+upload: all
 	st-flash write build/hoverboard.bin 0x8000000
 
 #######################################
@@ -211,11 +217,15 @@ unlock:
 	openocd -f interface/stlink-v2.cfg -f target/stm32f1x.cfg -c init -c "reset halt" -c "stm32f1x unlock 0" -c "reset halt" -c "exit"
 
 #######################################
+# serial
+#######################################
+
+serial: 
+	 picocom -b 115200 /dev/cu.wchusbserial401330
+
+#######################################
 # dependencies
 #######################################
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 
 # *** EOF ***
-
-.PHONY: all clean redo upload
- 

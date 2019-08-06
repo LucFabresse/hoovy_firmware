@@ -11,11 +11,12 @@ extern "C" {
 
 #include "stm32f1xx_hal.h"
 
-#define BUFFER_LENGTH 128
+#define BUFFER_LENGTH_RX 128
+#define BUFFER_LENGTH_TX 256
 
 struct UART {
-	volatile uint8_t RX_buffer[BUFFER_LENGTH];
-	volatile uint8_t TX_buffer[BUFFER_LENGTH];
+	volatile uint8_t RX_buffer[BUFFER_LENGTH_RX];
+	volatile uint8_t TX_buffer[BUFFER_LENGTH_TX];
 	volatile uint8_t RX_pointer;
 	volatile uint8_t RX_available;
 	volatile uint8_t TX_free;

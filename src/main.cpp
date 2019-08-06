@@ -36,11 +36,13 @@ extern struct ADC adc_R;
 
 #include "string.h"
 
+extern "C" {
+	int _kill(pid_t pid, int sig) {}
+	pid_t _getpid(void) {}
+}
 
 extern DMA_HandleTypeDef hdma_usart2_rx;
 extern volatile struct UART uart;
-
-const static uint16_t rbuflen = 128; // BUFFER_LENGTH (uart.h)
 
 extern UART_HandleTypeDef huart2;
 UART_HandleTypeDef *huart = &huart2;
@@ -52,18 +54,17 @@ int rosserial_read(){
 	
 	if (uart.RX_available) {
 		// __HAL_DMA_GET_COUNTER(__HANDLE__) Returns the number of remaining data units in the current DMAy Streamx transfer.
-		dma_count =  rbuflen - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
+		dma_count =  BUFFER_LENGTH_RX - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
 					
 		if( rind != dma_count){
 		    rx_value = uart.RX_buffer[rind++];
-		    rind &= rbuflen - 1;
+		    rind &= BUFFER_LENGTH_RX - 1;
 		}
 		last_rx_time = HAL_GetTick();
 	}
 	return rx_value;
 }
 
-const static uint16_t tbuflen = 256;
 uint8_t tbuf[256];
 uint32_t twind=0, tfind=0;
 
@@ -71,9 +72,9 @@ void rosserial_flush(void){
   if (Uart_is_TX_free()) {
     uart.TX_free = 0;    //busy
     if(twind != tfind){
-      uint16_t len = tfind < twind ? twind - tfind : tbuflen - tfind;
+      uint16_t len = tfind < twind ? twind - tfind : BUFFER_LENGTH_TX - tfind;
       HAL_UART_Transmit_DMA(huart, &(tbuf[tfind]), len);
-      tfind = (tfind + len) & (tbuflen - 1);
+      tfind = (tfind + len) & (BUFFER_LENGTH_TX - 1);
     }
     last_tx_time = HAL_GetTick();
   }
@@ -81,11 +82,11 @@ void rosserial_flush(void){
 
 void rosserial_write(uint8_t* data, int length){
   int n = length;
-  n = n <= tbuflen ? n : tbuflen;
+  n = n <= BUFFER_LENGTH_TX ? n : BUFFER_LENGTH_TX;
 
-  int n_tail = n <= tbuflen - twind ? n : tbuflen - twind;
+  int n_tail = n <= BUFFER_LENGTH_TX - twind ? n : BUFFER_LENGTH_TX - twind;
   memcpy(&(tbuf[twind]), data, n_tail);
-  twind = (twind + n) & (tbuflen - 1);
+  twind = (twind + n) & (BUFFER_LENGTH_TX - 1);
 
   if(n != n_tail){
     memcpy(tbuf, &(data[n_tail]), n - n_tail);
@@ -99,7 +100,7 @@ void rosserial_write_int(int i){
 	char buf[10];
 	bzero(buf,10);
 	sprintf(buf,"%d\n\r",i);
-	rosserial_write(buf,strlen(buf));
+	rosserial_write((uint8_t*)buf,strlen(buf));
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -156,7 +157,7 @@ int main(void)
 			readChar=rosserial_read();
 			shouldWrite = (readChar != -1);
 		} else {		
-			rosserial_write(&readChar, 1);
+			rosserial_write((uint8_t*)&readChar, 1);
 			shouldWrite = !shouldWrite;
 		}				
 

@@ -52,7 +52,7 @@ void MX_USART2_UART_Init(void)
 	uart.RX_available = 1;
 	uart.TX_free = 1;
 
-	HAL_UART_Receive_DMA(&huart2, (uint8_t*) uart.RX_buffer, BUFFER_LENGTH);
+	HAL_UART_Receive_DMA(&huart2, (uint8_t*) uart.RX_buffer, BUFFER_LENGTH_RX);
 }
 
 /* Look at the bytes you haven't processed yet, and using SLIP, process each non-empty frame.
@@ -68,11 +68,11 @@ uint8_t Uart_RX_process() {
 	if (uart.RX_available) {
 
 		//find the length of received data
-		dma_count =  BUFFER_LENGTH - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
+		dma_count =  BUFFER_LENGTH_RX - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
 		rx_length = dma_count - uart.RX_pointer; //difference from last count
 
 		if (rx_length < 0) {
-			rx_length = (rx_length + BUFFER_LENGTH) % BUFFER_LENGTH; //if wrapped around, fix the length
+			rx_length = (rx_length + BUFFER_LENGTH_RX) % BUFFER_LENGTH_RX; //if wrapped around, fix the length
 		} else if (rx_length == 0) {
 			return 0;
 		}
@@ -86,20 +86,20 @@ uint8_t Uart_RX_process() {
 		next_RX_pointer = 0xFF; //invalid, because buffer is length 128
 
 		for (i = rx_length - 1; i >= 0; i--) {
-			cur_index = (i + uart.RX_pointer) % BUFFER_LENGTH;
+			cur_index = (i + uart.RX_pointer) % BUFFER_LENGTH_RX;
 			rx_value = uart.RX_buffer[cur_index];
 
 			//no matter what reset parsing on any new line character
 			if (rx_value == FRAME_END1 || rx_value == FRAME_END2) {
 				if (next_RX_pointer == 0xFF) { //most recent newline character hasn't been found yet
 					last_frame_find = cur_index;
-					next_RX_pointer = (cur_index - 1 + BUFFER_LENGTH) % BUFFER_LENGTH;
+					next_RX_pointer = (cur_index - 1 + BUFFER_LENGTH_RX) % BUFFER_LENGTH_RX;
 				} else {
 					cur_frame_find = cur_index;
-					frame_length = (last_frame_find - cur_frame_find - 1 + BUFFER_LENGTH) % BUFFER_LENGTH;
+					frame_length = (last_frame_find - cur_frame_find - 1 + BUFFER_LENGTH_RX) % BUFFER_LENGTH_RX;
 					last_frame_find = cur_frame_find;
 					if (frame_length > 0) {
-						if (process_frame((cur_index+1) % BUFFER_LENGTH, frame_length) == 1) {
+						if (process_frame((cur_index+1) % BUFFER_LENGTH_RX, frame_length) == 1) {
 							uart.RX_pointer = next_RX_pointer;
 							return 1;
 						}
@@ -174,7 +174,7 @@ static int process_frame(uint8_t start, uint8_t length) {
 
 	for (i = 0; i < length; i++) {
 
-		rx_value = uart.RX_buffer[(i + start) % BUFFER_LENGTH];
+		rx_value = uart.RX_buffer[(i + start) % BUFFER_LENGTH_RX];
 
 		//SLIP escaping
 		if (rx_value == FRAME_ESC) {
@@ -184,7 +184,7 @@ static int process_frame(uint8_t start, uint8_t length) {
 				return 0;
 			}
 
-			rx_value = uart.RX_buffer[(i + start) % BUFFER_LENGTH];
+			rx_value = uart.RX_buffer[(i + start) % BUFFER_LENGTH_RX];
 			if (rx_value == ESC_END1) {
 				rx_value = FRAME_END1;
 			} else if (rx_value == ESC_END2) {
