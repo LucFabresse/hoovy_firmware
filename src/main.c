@@ -36,30 +36,36 @@ extern struct ADC adc_R;
 
 #include "string.h"
 
-extern UART_HandleTypeDef huart2;
-UART_HandleTypeDef *huart = &huart2;
 
-uint32_t rind=0;
 extern DMA_HandleTypeDef hdma_usart2_rx;
 extern volatile struct UART uart;
-uint8_t *rbuf = uart.RX_buffer;
 
 const static uint16_t rbuflen = 128; // BUFFER_LENGTH (uart.h)
+
+extern UART_HandleTypeDef huart2;
+UART_HandleTypeDef *huart = &huart2;
+uint32_t rind=0;
+
+int rosserial_read(){
+	int rx_value = -1;
+	int dma_count = -1;
+	
+	if (uart.RX_available) {
+		// __HAL_DMA_GET_COUNTER(__HANDLE__) Returns the number of remaining data units in the current DMAy Streamx transfer.
+		dma_count =  rbuflen - __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);
+					
+		if( rind != dma_count){
+		    rx_value = uart.RX_buffer[rind++];
+		    rind &= rbuflen - 1;
+		}
+		last_rx_time = HAL_GetTick();
+	}
+	return rx_value;
+}
+
 const static uint16_t tbuflen = 256;
 uint8_t tbuf[256];
 uint32_t twind=0, tfind=0;
-
-inline uint32_t getRdmaInd(void){ return (rbuflen - huart->hdmarx->Instance->CNDTR) & (rbuflen - 1); }
-
-int rosserial_read(){
-  int c = -1;
-  if(rind != getRdmaInd()){
-    c = rbuf[rind++];
-    rind &= rbuflen - 1;
-	 last_rx_time = HAL_GetTick();
-  }
-  return c;
-}
 
 void rosserial_flush(void){
   if (Uart_is_TX_free()) {
@@ -89,14 +95,12 @@ void rosserial_write(uint8_t* data, int length){
 }
 
 
-
-// assume that length < length(uart.TX_buffer)
-// void rosserial_write(uint8_t* data, int length){
-// 	if (Uart_is_TX_free()) {
-// 		uart.TX_free = 0;    //busy
-// 		HAL_UART_Transmit_DMA(&huart2, (uint8_t *)data, length);
-// 	}
-// }
+void rosserial_write_int(int i){
+	char buf[10];
+	bzero(buf,10);
+	sprintf(buf,"%d\n\r",i);
+	rosserial_write(buf,strlen(buf));
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -141,40 +145,20 @@ int main(void)
 	last_tx_time = HAL_GetTick();
 	last_pwr_time = HAL_GetTick();
 
-	char msg[]="Hello from serial\r\n";
-	int read = -1;
+	int shouldWrite = 0;
+	int readChar = -1;
+
 	
 	while (1) {
 		time = HAL_GetTick();
-		
-		read = rosserial_read();
-
-		if(read != -1) {
-			rosserial_write((uint8_t *)&read,1);
-			read = -1;
-		}
-			
-		// get the commands every RX_WAIT_PERIOD ms
-		// if (time - last_rx_time > RX_WAIT_PERIOD) {
-//
-// 			// if (!CHK_ERROR_BIT(status, STATUS_LOW_BATTERY) && !CHK_ERROR_BIT(status, STATUS_IS_CHARGING)) {
-// 				// receive_data();
-// 			// }
-// 		}
-
-		// transmit status/info every TX_WAIT_PERIOD ms
-		// if (time - last_tx_time > TX_WAIT_PERIOD) {
-		// 	// transmit_data();
-		// 	if(read != -1) {
-		// 		rosserial_write((uint8_t *)&read,1);
-		// 		read = -1;
-		// 	}
-		// }
-
-		// check to make sure power levels are ok
-		// if (time - last_pwr_time > POWER_CHECK_PERIOD) {
-// 			check_power();
-// 		}
+					
+		if( !shouldWrite ) {
+			readChar=rosserial_read();
+			shouldWrite = (readChar != -1);
+		} else {		
+			rosserial_write(&readChar, 1);
+			shouldWrite = !shouldWrite;
+		}				
 
 		HAL_IWDG_Refresh(&hiwdg);   //819mS
 	}

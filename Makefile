@@ -187,6 +187,11 @@ $(BUILD_DIR)/%.bin: $(BUILD_DIR)/%.elf | $(BUILD_DIR)
 $(BUILD_DIR):
 	mkdir $@		
 
+redo: all upload
+
+serial: 
+	 picocom -b 115200 /dev/cu.wchusbserial401330
+
 #######################################
 # clean up
 #######################################
@@ -211,3 +216,6 @@ unlock:
 -include $(shell mkdir .dep 2>/dev/null) $(wildcard .dep/*)
 
 # *** EOF ***
+
+.PHONY: all clean redo upload
+ 
