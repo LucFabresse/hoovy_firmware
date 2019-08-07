@@ -106,7 +106,7 @@ class STM32Hardware {
 	       uint16_t len = tfind < twind ? twind - tfind : BUFFER_LENGTH_TX - tfind;
 	       HAL_UART_Transmit_DMA(huart,&(tbuf[tfind]), len);
 	       tfind = (tfind + len) & (BUFFER_LENGTH_TX - 1);
-			 delay_ms(10);
+			 delay_ms(8);
 	     }
 	     
 	   }

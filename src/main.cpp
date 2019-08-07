@@ -138,11 +138,11 @@ int main(void)
 	nh.loginfo("[OK] Hoverboard started\n");
 	buzzer_one_beep();	
 	while (1) {
-		// last_rx_time = HAL_GetTick();
+		last_rx_time = HAL_GetTick(); // Important fpr Motor HeartBeat
 		chatter.publish(&str_msg);
 		
 		nh.spinOnce();
-		delay_ms(100); // => rostopic hz /chatter => ~90hz
+		// delay_ms(100); // => rostopic hz /chatter => ~90hz
 		HAL_IWDG_Refresh(&hiwdg);   //819mS // Luc: what is this delay?
 	}
 
