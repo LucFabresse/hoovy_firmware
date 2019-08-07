@@ -84,8 +84,12 @@ void motors_setup_and_init(void);
 void motors_stop();
 void motors_calibrate();
 void motors_speeds(int16_t l_rpm, int16_t r_rpm);
-void motor_speed_right(int16_t rpm);
-void motor_speed_left(int16_t rpm);
+
+void motor_right_rpm(int16_t rpm);
+void motor_left_rpm(int16_t rpm);
+
+int motor_right_hall();
+int motor_left_hall();
 
 void HALL_ISR_Callback(struct Motor *motor);
 void Duty_ISR_Callback(struct Motor *motor);

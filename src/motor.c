@@ -210,11 +210,11 @@ void motors_speeds(int16_t l_rpm, int16_t r_rpm) {
 	motor_speed(&motor_R, r_rpm);
 }
 
-void motor_speed_right(int16_t rpm) {
+void motor_right_rpm(int16_t rpm) {
 	motor_speed(&motor_R, rpm);
 }
 
-void motor_speed_left(int16_t rpm) {
+void motor_left_rpm(int16_t rpm) {
 	motor_speed(&motor_L, rpm);
 }
 
@@ -775,3 +775,6 @@ static int in_range(int x) {
 	};
 	return mod_lookup_table[x + 6];
 }
+
+int motor_right_hall() { return motor_get_position(&motor_R); }
+int motor_left_hall()  { return motor_get_position(&motor_L); }

@@ -9,15 +9,17 @@ extern "C" {
 	#include "adc.h"
 	#include "motor.h"
 
-	int _kill(pid_t pid, int sig) {}
-	pid_t _getpid(void) {}
+	int _kill(pid_t pid, int sig) { return -1; }
+	pid_t _getpid(void) { return -1; }
 }
 
 #include "rosserial_stm32/ros.h"
 #include "std_msgs/String.h"
 #include "std_msgs/UInt16.h"
 #include "std_msgs/Int16.h"
-
+#include "std_msgs/Int32.h"
+#include "std_msgs/Float32.h"
+#include "sensor_msgs/BatteryState.h"
 
 // ----------------------PRIVATE----------------------
 
@@ -28,9 +30,9 @@ uint32_t last_rx_time = 0; // useful for hearbeat in motor.c
 
 static void SystemClock_Config(void);
 static void MX_IWDG_Init(void);
-static void receive_data();
-static void transmit_data();
-static void check_power();
+// static void receive_data();
+// static void transmit_data();
+// static void check_power();
 
 // ----------------------PUBLIC----------------------
 void error_handler(void);
@@ -61,31 +63,36 @@ void buzzerCb(const std_msgs::UInt16& beepDelay){
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Battery Topic
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#define BATTERY_REFRESH_RATE 2000 // ms
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Motors Topic
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-char log_msg[128];
+// char log_msg[128];
 
 void MotorLeftCb(const std_msgs::Int16& rpm) {
-	motor_speed_left(rpm.data);
-	sprintf(log_msg, "motor left data received %d", rpm.data);
-	nh.loginfo(log_msg);
+	motor_left_rpm(rpm.data);
+	// sprintf(log_msg, "motor left data received %d", rpm.data);
+	// nh.loginfo(log_msg);
 }
 
 void MotorRightCb (const std_msgs::Int16& rpm) {
 	// nh.loginfo("motor right data received");
-	motor_speed_right(rpm.data);	
-	sprintf(log_msg, "motor right data received %d", rpm.data);
-	nh.loginfo(log_msg);
+	motor_right_rpm(rpm.data);	
+	// sprintf(log_msg, "motor right data received %d", rpm.data);
+	// nh.loginfo(log_msg);
 }
 
- 
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-/* MAIN
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *	MAIN
  * Setup the clock and watchdog, and initialize all the peripherals.
  * Check the RX data, TX data, and power statuses at different intervals.
- */
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
 int main(void)
 {
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -118,34 +125,63 @@ int main(void)
 
 	nh.initNode();
 
-	// @TODO publish /battery_level
-	std_msgs::String str_msg;
-	str_msg.data = "Hello from Hoverboard\n\r";
-	ros::Publisher chatter("chatter", &str_msg);
-	nh.advertise(chatter);
+	// std_msgs::String str_msg;
+	// str_msg.data = "Hello from Hoverboard\n\r";
+	// ros::Publisher chatterPublisher("chatter", &str_msg);
+	// nh.advertise(chatterPublisher);
+	
+	// Publish Topic /battery_voltage
+	// TODO: replace by const sensor_msgs::BatteryState& 
+	std_msgs::Float32 batteryVoltageMsg;
+	ros::Publisher batteryVoltagePublisher("battery_voltage", &batteryVoltageMsg);
+	nh.advertise(batteryVoltagePublisher);
+	uint32_t last_battery_refresh = HAL_GetTick();
+	
+	// publish topic Hall
+	std_msgs::Int32 hallLeftMsg;
+	ros::Publisher hallLeftPublisher("motor_left_hall", &hallLeftMsg);
+	nh.advertise(hallLeftPublisher);
+	
+	std_msgs::Int32 hallRightMsg;
+	ros::Publisher hallRightPublisher("motor_right_hall", &hallRightMsg);
+	nh.advertise(hallRightPublisher);
 	
 	// subscribe /buzzer
 	ros::Subscriber<std_msgs::UInt16> subBuzzerTopic("buzzer", &buzzerCb );
 	nh.subscribe(subBuzzerTopic);
 	
 	// subscribe to motors topics
-	ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left", &MotorLeftCb );
+	ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left_rpm", &MotorLeftCb );
  	nh.subscribe(subMotorLeftTopic);
 	 //delay_ms(50);
-	ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right", &MotorRightCb );
+	ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right_rpm", &MotorRightCb );
 	nh.subscribe(subMotorRightTopic);
 	
+	uint32_t time;
 	nh.loginfo("[OK] Hoverboard started\n");
-	buzzer_one_beep();	
+	buzzer_one_beep();
 	while (1) {
-		last_rx_time = HAL_GetTick(); // Important fpr Motor HeartBeat
-		chatter.publish(&str_msg);
+		last_rx_time = HAL_GetTick(); // Important for Motor HeartBeat
+		time = last_rx_time;
+		
+		// chatterPublisher.publish(&str_msg);
+		
+		hallLeftMsg.data = motor_left_hall();
+		hallLeftPublisher.publish(&hallLeftMsg);
+		
+		hallRightMsg.data = motor_right_hall();
+		hallRightPublisher.publish(&hallRightMsg);
+		
+		if (time - last_battery_refresh > BATTERY_REFRESH_RATE) {
+			last_battery_refresh = time;
+			batteryVoltageMsg.data = get_battery_volt();
+			batteryVoltagePublisher.publish(&batteryVoltageMsg);
+		}
 		
 		nh.spinOnce();
-		// delay_ms(100); // => rostopic hz /chatter => ~90hz
+		
 		HAL_IWDG_Refresh(&hiwdg);   //819mS // Luc: what is this delay?
 	}
-
 // #endif
 
 }
@@ -188,39 +224,39 @@ int main(void)
 // 	}
 // }
 
-/* Check two power related things:
- * - the battery level is too low (limit set at 32V)
- * - if it's charging
- *
- * If either of them is true, the robot should not move,
- * and the corresponding error bits should be set in the status byte.
- */
-static void check_power() {
-	/* based off of power button at PA1
-	 * PA1 is detected high at ~2V in 3.3V system
-	 * voltage detected is 1/16 of battery voltage
-	 */
-	if (get_battery_volt() < 32) {
-		SET_ERROR_BIT(status, STATUS_LOW_BATTERY);
-		motors_stop();
-		buzzer_short_beep();
-	} else {
-		CLR_ERROR_BIT(status, STATUS_LOW_BATTERY);
-	}
-	HAL_IWDG_Refresh(&hiwdg);   //819mS
-
-
-	/* don't move if we are charging
-	 */
-	if (is_charging()) {
-		SET_ERROR_BIT(status, STATUS_IS_CHARGING);
-		motors_stop();
-	} else {
-		CLR_ERROR_BIT(status, STATUS_IS_CHARGING);
-	}
-
-	last_pwr_time = HAL_GetTick();
-}
+// /* Check two power related things:
+//  * - the battery level is too low (limit set at 32V)
+//  * - if it's charging
+//  *
+//  * If either of them is true, the robot should not move,
+//  * and the corresponding error bits should be set in the status byte.
+//  */
+// static void check_power() {
+// 	/* based off of power button at PA1
+// 	 * PA1 is detected high at ~2V in 3.3V system
+// 	 * voltage detected is 1/16 of battery voltage
+// 	 */
+// 	if (get_battery_volt() < 32) {
+// 		SET_ERROR_BIT(status, STATUS_LOW_BATTERY);
+// 		motors_stop();
+// 		buzzer_short_beep();
+// 	} else {
+// 		CLR_ERROR_BIT(status, STATUS_LOW_BATTERY);
+// 	}
+// 	HAL_IWDG_Refresh(&hiwdg);   //819mS
+//
+//
+// 	/* don't move if we are charging
+// 	 */
+// 	if (is_charging()) {
+// 		SET_ERROR_BIT(status, STATUS_IS_CHARGING);
+// 		motors_stop();
+// 	} else {
+// 		CLR_ERROR_BIT(status, STATUS_IS_CHARGING);
+// 	}
+//
+// 	last_pwr_time = HAL_GetTick();
+// }
 
 
 /** System Clock Configuration
@@ -330,13 +366,5 @@ void assert_failed(uint8_t* file, uint32_t line)
 }
 
 #endif
-
-/**
- * @}
- */
-
-/**
- * @}
- */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
