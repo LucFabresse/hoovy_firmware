@@ -210,6 +210,14 @@ void motors_speeds(int16_t l_rpm, int16_t r_rpm) {
 	motor_speed(&motor_R, r_rpm);
 }
 
+void motor_speed_right(int16_t rpm) {
+	motor_speed(&motor_R, rpm);
+}
+
+void motor_speed_left(int16_t rpm) {
+	motor_speed(&motor_L, rpm);
+}
+
 //-------------------------------interrupt callbacks-------------------------------
 /* This is the interrupt function for whenever the hall sensor readings change.
  */
@@ -409,15 +417,6 @@ static void motor_speed(struct Motor *motor, int16_t rpm) {
 	}
 
 }
-
-void motor_speed_right(int16_t rpm) {
-	motor_speed(&motor_R, rpm);
-}
-
-void motor_speed_left(int16_t rpm) {
-	motor_speed(&motor_L, rpm);
-}
-
 
 /* Calibrate a wheel by slowly increasing the pwm duty cycle until it moves just enough.
  */

@@ -68,14 +68,14 @@ char log_msg[128];
 
 void MotorLeftCb(const std_msgs::Int16& rpm) {
 	motor_speed_left(rpm.data);
-	sprintf(log_msg, "motor left data received %d", rpm);
+	sprintf(log_msg, "motor left data received %d", rpm.data);
 	nh.loginfo(log_msg);
 }
 
 void MotorRightCb (const std_msgs::Int16& rpm) {
 	// nh.loginfo("motor right data received");
 	motor_speed_right(rpm.data);	
-	sprintf(log_msg, "motor right data received %d", rpm);
+	sprintf(log_msg, "motor right data received %d", rpm.data);
 	nh.loginfo(log_msg);
 }
 
@@ -109,6 +109,7 @@ int main(void)
 	adcs_setup_and_init();
 	motors_setup_and_init();
 
+// #define CALIBRATION
 // #ifdef CALIBRATION
 // 	while (1) {
 // 		motors_calibrate();
@@ -128,11 +129,11 @@ int main(void)
 	nh.subscribe(subBuzzerTopic);
 	
 	// subscribe to motors topics
-	 ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left", &MotorLeftCb );
-	 nh.subscribe(subMotorLeftTopic);
+	ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left", &MotorLeftCb );
+ 	nh.subscribe(subMotorLeftTopic);
 	 //delay_ms(50);
-	 ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right", &MotorRightCb );
-	 nh.subscribe(subMotorRightTopic);
+	ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right", &MotorRightCb );
+	nh.subscribe(subMotorRightTopic);
 	
 	nh.loginfo("[OK] Hoverboard started\n");
 	buzzer_one_beep();	
