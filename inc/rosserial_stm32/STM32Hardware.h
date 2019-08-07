@@ -39,8 +39,8 @@
 #define tbuf  ((uint8_t *)&uart.TX_buffer[0])
 
 // #define DELAY_BETWEEN_TX 8 // ms if BAUD_RATE = 115200 (cf. usart.h)
-#define DELAY_BETWEEN_TX 3 // ms if BAUD_RATE = 250K (cf. usart.h)
-// #define DELAY_BETWEEN_TX 1 // ms if BAUD_RATE = 500K (cf. usart.h)
+// #define DELAY_BETWEEN_TX 3 // ms if BAUD_RATE = 250K (cf. usart.h)
+#define DELAY_BETWEEN_TX 3 // ms if BAUD_RATE = 500K (cf. usart.h)
 
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_hal_uart.h"

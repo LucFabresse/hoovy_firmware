@@ -220,10 +220,20 @@ void motor_left_rpm(int16_t rpm) {
 
 //-------------------------------interrupt callbacks-------------------------------
 /* This is the interrupt function for whenever the hall sensor readings change.
- */
+ */	
+// not called when motors are not powered (current) and moving
 void HALL_ISR_Callback(struct Motor *motor) {
-
+	// motor->ticks += motor->direction;
 }
+
+int32_t motor_right_ticks() {
+	return motor_R.ticks;
+}
+
+int32_t motor_left_ticks() {
+	return motor_L.ticks;
+}
+
 
 /* This is the interrupt function to change the duty cycle 16x per commutation phase.
  * Duration: ~15 microseconds
@@ -265,18 +275,32 @@ void Speed_ISR_Callback(struct Motor *motor) {
 	} else {
 		CLR_ERROR_BIT(status, STATUS_HEARTBEAT_MISSING);
 	}
+	
+	uint8_t current_pos = motor_get_position(motor);
+	if (motor->last_position != current_pos) {
+		
+		if((motor->last_position == (current_pos + 1)) || (motor->last_position == 5 && current_pos == 0)) {
+			motor->ticks++;
+		}
+		
+		if((motor->last_position == (current_pos - 1)) ||  (motor->last_position == 0 && current_pos == 5) ) {
+			motor->ticks--;
+		}
+		
+		motor->last_position = current_pos;
+	}	
 
 	if (motor->stop) {
 		return;
 	}
-
+	
 	static int newPos;
 	if (motor->direction > 0) {
 		newPos = in_range(motor_get_position(motor) + motor->setup.OFFSET_POS_HALL);
 	} else {
 		newPos = in_range(motor_get_position(motor) + motor->setup.OFFSET_NEG_HALL);
 	}
-
+	
 	if (newPos == motor->position) {
 		motor_pwm(motor, motor->pwm + motor->pos_increment);
 	} else if (in_range(newPos - motor->position - motor->direction) != 0) {
@@ -341,6 +365,8 @@ static void motor_init(struct Motor *motor) {
 
 	motor->direction = 1;
 	motor->stop = 1;
+	motor->ticks = 0;
+	motor->last_position = motor_get_position(motor);
 
 	// pwm lines: +1, const, or -1
 	motor->PWM_DUTIES[0] = 0;

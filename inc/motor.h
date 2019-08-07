@@ -64,6 +64,9 @@ struct Motor {
 	volatile uint8_t position; //hall
 	volatile uint8_t next_position; //hall
 
+	volatile int32_t ticks; // odometry ticks
+	volatile uint8_t last_position; 
+	
 	volatile float pwm;
 
 	volatile uint16_t speed;
@@ -72,7 +75,7 @@ struct Motor {
 
 	volatile float pos_increment; // 1 or 0.1
 	volatile float neg_increment; // 2 or 0.1
-
+	
 	// pwm lines: +1, 0, or -1
 	volatile uint32_t PWM_DUTIES[3];
 	volatile uint32_t DUTY_LOOKUP[6][DUTY_STEPS];
@@ -90,6 +93,9 @@ void motor_left_rpm(int16_t rpm);
 
 int motor_right_hall();
 int motor_left_hall();
+
+int32_t motor_right_ticks();
+int32_t motor_left_ticks();
 
 void HALL_ISR_Callback(struct Motor *motor);
 void Duty_ISR_Callback(struct Motor *motor);

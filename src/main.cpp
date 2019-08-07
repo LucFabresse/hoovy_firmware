@@ -8,9 +8,6 @@ extern "C" {
 	#include "uart.h"
 	#include "adc.h"
 	#include "motor.h"
-
-	int _kill(pid_t pid, int sig) { return -1; }
-	pid_t _getpid(void) { return -1; }
 }
 
 #include "rosserial_stm32/ros.h"
@@ -146,6 +143,14 @@ int main(void)
 	ros::Publisher hallRightPublisher("motor_right_hall", &hallRightMsg);
 	nh.advertise(hallRightPublisher);
 	
+	std_msgs::Int32 ticksRightMsg;
+	ros::Publisher ticksRightPublisher("motor_right_ticks", &ticksRightMsg);
+	nh.advertise(ticksRightPublisher);
+
+	std_msgs::Int32 ticksLeftMsg;
+	ros::Publisher ticksLeftPublisher("motor_left_ticks", &ticksLeftMsg);
+	nh.advertise(ticksLeftPublisher);
+
 	// subscribe /buzzer
 	ros::Subscriber<std_msgs::UInt16> subBuzzerTopic("buzzer", &buzzerCb );
 	nh.subscribe(subBuzzerTopic);
@@ -153,13 +158,15 @@ int main(void)
 	// subscribe to motors topics
 	ros::Subscriber<std_msgs::Int16> subMotorLeftTopic("motor_left_rpm", &MotorLeftCb );
  	nh.subscribe(subMotorLeftTopic);
-	 //delay_ms(50);
+	
 	ros::Subscriber<std_msgs::Int16> subMotorRightTopic("motor_right_rpm", &MotorRightCb );
 	nh.subscribe(subMotorRightTopic);
 	
 	uint32_t time;
 	nh.loginfo("[OK] Hoverboard started\n");
 	buzzer_one_beep();
+	delay_ms(10);
+	
 	while (1) {
 		last_rx_time = HAL_GetTick(); // Important for Motor HeartBeat
 		time = last_rx_time;
@@ -172,6 +179,12 @@ int main(void)
 		hallRightMsg.data = motor_right_hall();
 		hallRightPublisher.publish(&hallRightMsg);
 		
+		ticksRightMsg.data = motor_right_ticks();
+		ticksRightPublisher.publish(&ticksRightMsg);
+		
+		ticksLeftMsg.data = motor_left_ticks();
+		ticksLeftPublisher.publish(&ticksLeftMsg);
+
 		if (time - last_battery_refresh > BATTERY_REFRESH_RATE) {
 			last_battery_refresh = time;
 			batteryVoltageMsg.data = get_battery_volt();
