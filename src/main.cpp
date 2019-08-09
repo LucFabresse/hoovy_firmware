@@ -16,7 +16,6 @@ extern "C" {
 #include "std_msgs/Int16.h"
 #include "std_msgs/Int32.h"
 #include "std_msgs/Float32.h"
-#include "sensor_msgs/BatteryState.h"
 
 // ----------------------PRIVATE----------------------
 
